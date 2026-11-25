@@ -1,0 +1,2520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DineFlow POS — Restaurant Billing & Table Management</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter & JetBrains Mono for receipts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+        },
+      },
+    };
+  </script>
+
+  <style>
+    /* Custom scrollbars & print invoice formatting */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+
+    @media print {
+      body * {
+        visibility: hidden;
+      }
+      #printable-receipt,
+      #printable-receipt * {
+        visibility: visible;
+      }
+      #printable-receipt {
+        position: fixed;
+        left: 0;
+        top: 0;
+        width: 100%;
+        max-width: 380px;
+        margin: 0 auto;
+        box-shadow: none !important;
+        border: none !important;
+      }
+      .no-print {
+        display: none !important;
+      }
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans antialiased selection:bg-amber-200 selection:text-slate-900">
+
+  <!-- App Container -->
+  <div class="min-h-screen flex flex-col lg:flex-row">
+
+    <!-- Mobile Header -->
+    <header class="lg:hidden bg-slate-900 text-white px-4 py-3 flex items-center justify-between sticky top-0 z-30 shadow-md">
+      <div class="flex items-center gap-2.5">
+        <div class="w-9 h-9 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-extrabold text-lg shadow">
+          <i class="fa-solid fa-utensils"></i>
+        </div>
+        <div>
+          <h1 class="font-bold text-base leading-tight">DineFlow POS</h1>
+          <p class="text-[11px] text-slate-400">Restaurant Billing System</p>
+        </div>
+      </div>
+      <button id="mobile-menu-btn" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200">
+        <i class="fa-solid fa-bars text-lg"></i>
+      </button>
+    </header>
+
+    <!-- Sidebar Navigation -->
+    <aside id="sidebar" class="fixed inset-y-0 left-0 z-40 w-64 bg-slate-900 text-slate-200 flex flex-col justify-between transform -translate-x-full lg:translate-x-0 lg:static transition-transform duration-200 ease-in-out shadow-xl">
+      <div>
+        <!-- Brand Logo -->
+        <div class="p-5 border-b border-slate-800 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 text-slate-950 flex items-center justify-center font-extrabold text-xl shadow-lg shadow-amber-500/20">
+              <i class="fa-solid fa-utensils"></i>
+            </div>
+            <div>
+              <h1 class="font-bold text-white text-lg tracking-tight">DineFlow POS</h1>
+              <span class="text-xs text-emerald-400 font-medium flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Terminal Active
+              </span>
+            </div>
+          </div>
+          <button id="close-sidebar-btn" class="lg:hidden p-2 text-slate-400 hover:text-white">
+            <i class="fa-solid fa-xmark text-lg"></i>
+          </button>
+        </div>
+
+        <!-- Nav Links -->
+        <nav class="p-3 space-y-1.5" id="nav-links">
+          <button data-tab="dashboard" class="nav-btn w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-sm font-medium transition-all bg-amber-500 text-slate-950 shadow-sm">
+            <i class="fa-solid fa-chart-pie w-5 text-center"></i>
+            <span>Dashboard</span>
+          </button>
+
+          <button data-tab="tables" class="nav-btn w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all">
+            <div class="flex items-center gap-3">
+              <i class="fa-solid fa-chair w-5 text-center"></i>
+              <span>Tables & Booking</span>
+            </div>
+            <span id="nav-occupied-badge" class="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-amber-400 font-semibold">0/10</span>
+          </button>
+
+          <button data-tab="pos" class="nav-btn w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all">
+            <div class="flex items-center gap-3">
+              <i class="fa-solid fa-cash-register w-5 text-center"></i>
+              <span>Order & POS Cart</span>
+            </div>
+            <span id="nav-orders-badge" class="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-emerald-400 font-semibold">0</span>
+          </button>
+
+          <button data-tab="billing" class="nav-btn w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all">
+            <i class="fa-solid fa-file-invoice-dollar w-5 text-center"></i>
+            <span>Billing & Checkout</span>
+          </button>
+
+          <button data-tab="menu" class="nav-btn w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all">
+            <i class="fa-solid fa-book-open w-5 text-center"></i>
+            <span>Menu Management</span>
+          </button>
+
+          <button data-tab="history" class="nav-btn w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all">
+            <i class="fa-solid fa-clock-rotate-left w-5 text-center"></i>
+            <span>Billing History</span>
+          </button>
+        </nav>
+      </div>
+
+      <!-- Footer / Currency & Reset -->
+      <div class="p-4 border-t border-slate-800 space-y-3">
+        <div class="flex items-center justify-between text-xs text-slate-400 bg-slate-800/70 px-3 py-2 rounded-xl">
+          <span>Currency</span>
+          <select id="currency-select" class="bg-transparent text-white font-semibold focus:outline-none cursor-pointer">
+            <option value="₹" class="bg-slate-900">INR (₹)</option>
+            <option value="$" class="bg-slate-900">USD ($)</option>
+            <option value="€" class="bg-slate-900">EUR (€)</option>
+            <option value="£" class="bg-slate-900">GBP (£)</option>
+          </select>
+        </div>
+
+        <button id="reset-demo-btn" class="w-full py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-rose-950/70 text-slate-300 hover:text-rose-300 border border-slate-700 hover:border-rose-800 text-xs font-medium transition-colors flex items-center justify-center gap-2">
+          <i class="fa-solid fa-rotate"></i>
+          <span>Reset Demo Data</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Backdrop for Mobile Sidebar -->
+    <div id="sidebar-backdrop" class="fixed inset-0 bg-slate-950/60 z-30 hidden lg:hidden"></div>
+
+    <!-- Main Workspace -->
+    <main class="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto w-full">
+
+      <!-- Top Context Bar -->
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div>
+          <h2 id="page-title" class="text-2xl font-bold text-slate-900 tracking-tight">Dashboard Overview</h2>
+          <p id="page-subtitle" class="text-sm text-slate-500">Live floor status, active orders, and daily revenue summary.</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2.5">
+          <span id="live-clock" class="text-xs font-mono bg-white border border-slate-200 px-3 py-2 rounded-xl text-slate-600 shadow-sm"></span>
+          <button onclick="app.switchTab('pos')" class="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold text-sm shadow-sm transition-colors flex items-center gap-2">
+            <i class="fa-solid fa-plus"></i>
+            <span>New Order</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- ========================================================= -->
+      <!-- 1. DASHBOARD VIEW                                         -->
+      <!-- ========================================================= -->
+      <section id="view-dashboard" class="space-y-6">
+        <!-- KPI Grid -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Today's Revenue</p>
+              <p id="kpi-revenue" class="text-2xl font-extrabold text-slate-900 mt-1">₹0.00</p>
+              <p id="kpi-bills-count" class="text-xs text-emerald-600 font-medium mt-1">0 bills settled</p>
+            </div>
+            <div class="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl">
+              <i class="fa-solid fa-indian-rupee-sign" id="kpi-currency-icon"></i>
+            </div>
+          </div>
+
+          <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Active Orders</p>
+              <p id="kpi-active-orders" class="text-2xl font-extrabold text-slate-900 mt-1">0</p>
+              <p id="kpi-running-value" class="text-xs text-amber-600 font-medium mt-1">Running value: ₹0.00</p>
+            </div>
+            <div class="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center text-xl">
+              <i class="fa-solid fa-fire-burner"></i>
+            </div>
+          </div>
+
+          <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Table Occupancy</p>
+              <p id="kpi-tables-occupied" class="text-2xl font-extrabold text-slate-900 mt-1">0 / 10</p>
+              <p id="kpi-tables-available" class="text-xs text-slate-500 font-medium mt-1">10 available now</p>
+            </div>
+            <div class="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-xl">
+              <i class="fa-solid fa-chair"></i>
+            </div>
+          </div>
+
+          <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Reservations</p>
+              <p id="kpi-reserved-count" class="text-2xl font-extrabold text-slate-900 mt-1">0</p>
+              <p class="text-xs text-indigo-600 font-medium mt-1">Upcoming bookings</p>
+            </div>
+            <div class="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-xl">
+              <i class="fa-solid fa-calendar-check"></i>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Actions + Live Floor Snapshot & Recent Bills -->
+        <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          <!-- Left 2 Columns: Active Floor & Running Orders -->
+          <div class="xl:col-span-2 bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h3 class="font-bold text-slate-900">Live Floor & Running Tables</h3>
+                <p class="text-xs text-slate-500">Click any table to take orders, seat guests, or generate a bill</p>
+              </div>
+              <button onclick="app.switchTab('tables')" class="text-xs font-semibold text-amber-600 hover:text-amber-700">
+                Manage All Tables <i class="fa-solid fa-arrow-right ml-1"></i>
+              </button>
+            </div>
+            <div id="dashboard-tables-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+              <!-- Populated dynamically -->
+            </div>
+          </div>
+
+          <!-- Right Column: Recent Settled Bills -->
+          <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5 flex flex-col">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h3 class="font-bold text-slate-900">Recent Invoices</h3>
+                <p class="text-xs text-slate-500">Latest completed transactions</p>
+              </div>
+              <button onclick="app.switchTab('history')" class="text-xs font-semibold text-amber-600 hover:text-amber-700">
+                View All
+              </button>
+            </div>
+            <div id="dashboard-recent-bills" class="space-y-3 flex-1 overflow-y-auto max-h-80">
+              <!-- Populated dynamically -->
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================================= -->
+      <!-- 2. TABLES & BOOKING SYSTEM VIEW                           -->
+      <!-- ========================================================= -->
+      <section id="view-tables" class="hidden space-y-6">
+        <!-- Filter & Add Table Bar -->
+        <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div class="flex flex-wrap items-center gap-2" id="table-status-filters">
+            <button data-status="ALL" class="table-filter-btn px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-900 text-white">All Tables</button>
+            <button data-status="AVAILABLE" class="table-filter-btn px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200">Available</button>
+            <button data-status="OCCUPIED" class="table-filter-btn px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200">Occupied</button>
+            <button data-status="RESERVED" class="table-filter-btn px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200">Reserved</button>
+          </div>
+
+          <button onclick="app.openAddTableModal()" class="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-sm flex items-center justify-center gap-2">
+            <i class="fa-solid fa-plus"></i>
+            <span>Add New Table</span>
+          </button>
+        </div>
+
+        <!-- Floor Plan Grid -->
+        <div id="tables-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <!-- Populated dynamically -->
+        </div>
+      </section>
+
+      <!-- ========================================================= -->
+      <!-- 3. ORDER TAKING & POS CART VIEW                           -->
+      <!-- ========================================================= -->
+      <section id="view-pos" class="hidden">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          <!-- Left 7 Cols: Menu Browser -->
+          <div class="lg:col-span-7 space-y-4">
+            <!-- Search & Category Filter -->
+            <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
+              <div class="flex flex-col sm:flex-row gap-3">
+                <div class="relative flex-1">
+                  <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                  <input type="text" id="pos-search-input" placeholder="Search dishes, beverages, or item code..." class="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white" />
+                </div>
+                <select id="pos-diet-filter" class="px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                  <option value="ALL">All Items</option>
+                  <option value="VEG">🟢 Pure Veg</option>
+                  <option value="NON_VEG">🔴 Non-Veg</option>
+                </select>
+              </div>
+
+              <!-- Category Pills -->
+              <div id="pos-category-pills" class="flex items-center gap-2 overflow-x-auto pb-1">
+                <!-- Populated dynamically -->
+              </div>
+            </div>
+
+            <!-- Menu Items Grid -->
+            <div id="pos-menu-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <!-- Populated dynamically -->
+            </div>
+          </div>
+
+          <!-- Right 5 Cols: Active Order Ticket / Cart -->
+          <div class="lg:col-span-5 bg-white rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sticky top-6">
+            <!-- Order Target Selector -->
+            <div class="p-4 border-b border-slate-100 bg-slate-50/70 rounded-t-2xl space-y-3">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Active Order Ticket</span>
+                <span id="pos-order-id-badge" class="text-xs font-mono font-semibold px-2.5 py-1 rounded-lg bg-amber-100 text-amber-800">NEW ORDER</span>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label class="block text-[11px] font-semibold text-slate-500 mb-1">Select Table / Mode</label>
+                  <select id="pos-table-select" class="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                    <!-- Populated dynamically -->
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-[11px] font-semibold text-slate-500 mb-1">Guest / Customer Name</label>
+                  <input type="text" id="pos-customer-name" placeholder="Walk-in Guest" class="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                </div>
+              </div>
+            </div>
+
+            <!-- Order Items List -->
+            <div id="pos-cart-items" class="p-4 space-y-2.5 max-h-[380px] overflow-y-auto divide-y divide-slate-100">
+              <!-- Populated dynamically -->
+            </div>
+
+            <!-- Order Summary & Actions -->
+            <div class="p-4 border-t border-slate-200 bg-slate-50/60 rounded-b-2xl space-y-3">
+              <div class="space-y-1.5 text-sm">
+                <div class="flex justify-between text-slate-500">
+                  <span>Items Count</span>
+                  <span id="pos-cart-count" class="font-semibold text-slate-700">0</span>
+                </div>
+                <div class="flex justify-between text-slate-500">
+                  <span>Subtotal (excl. tax)</span>
+                  <span id="pos-cart-subtotal" class="font-semibold text-slate-800">₹0.00</span>
+                </div>
+                <div class="flex justify-between text-base font-bold text-slate-900 pt-1 border-t border-slate-200/80">
+                  <span>Estimated Total (+5% GST)</span>
+                  <span id="pos-cart-total" class="text-emerald-600">₹0.00</span>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 gap-2.5 pt-1">
+                <button id="pos-save-order-btn" class="py-3 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm shadow-sm transition-colors flex items-center justify-center gap-2">
+                  <i class="fa-solid fa-kitchen-set"></i>
+                  <span>Save / KOT</span>
+                </button>
+                <button id="pos-proceed-bill-btn" class="py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm shadow-sm transition-colors flex items-center justify-center gap-2">
+                  <i class="fa-solid fa-file-invoice-dollar"></i>
+                  <span>Settle Bill</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================================= -->
+      <!-- 4. BILLING, DISCOUNTS & PAYMENT VIEW                      -->
+      <!-- ========================================================= -->
+      <section id="view-billing" class="hidden">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          <!-- Left 7 Cols: Select Open Order & Itemized Breakdown -->
+          <div class="lg:col-span-7 space-y-4">
+            <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 class="font-bold text-slate-900">Select Active Table / Order to Bill</h3>
+                  <p class="text-xs text-slate-500">Only tables or takeaway tickets with active items appear here</p>
+                </div>
+                <select id="bill-order-select" class="px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500 min-w-[220px]">
+                  <!-- Populated dynamically -->
+                </select>
+              </div>
+
+              <!-- Itemized Table -->
+              <div id="bill-items-container" class="border border-slate-200 rounded-xl overflow-hidden">
+                <!-- Populated dynamically -->
+              </div>
+            </div>
+
+            <!-- Discount Policy & Tax Configuration -->
+            <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
+              <h3 class="font-bold text-slate-900 flex items-center gap-2">
+                <i class="fa-solid fa-tags text-amber-500"></i>
+                <span>Discount Policy & Tax Settings</span>
+              </h3>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-semibold text-slate-600 mb-1.5">Discount Policy</label>
+                  <select id="bill-discount-policy" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500">
+                    <option value="NONE">No Discount (0%)</option>
+                    <option value="WELCOME10">Promo: WELCOME10 (10% Off)</option>
+                    <option value="FESTIVE20">Promo: FESTIVE20 (20% Off)</option>
+                    <option value="LOYALTY15">Loyalty Member (15% Off)</option>
+                    <option value="CUSTOM_PERCENT">Custom Percentage (%)</option>
+                    <option value="CUSTOM_FLAT">Custom Flat Amount Off</option>
+                  </select>
+                </div>
+
+                <div id="custom-discount-wrapper" class="hidden">
+                  <label id="custom-discount-label" class="block text-xs font-semibold text-slate-600 mb-1.5">Custom Discount Value</label>
+                  <input type="number" id="bill-custom-discount-val" min="0" step="1" value="0" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                </div>
+
+                <div>
+                  <label class="block text-xs font-semibold text-slate-600 mb-1.5">GST / Tax Slab</label>
+                  <select id="bill-tax-rate" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500">
+                    <option value="5">Standard Restaurant GST (5% — 2.5% CGST + 2.5% SGST)</option>
+                    <option value="12">AC / Premium Dining GST (12%)</option>
+                    <option value="18">Luxury / Bar GST (18%)</option>
+                    <option value="0">Tax Exempt (0%)</option>
+                  </select>
+                </div>
+
+                <div class="flex items-center pt-5">
+                  <label class="inline-flex items-center gap-2.5 cursor-pointer select-none">
+                    <input type="checkbox" id="bill-service-charge" class="w-4 h-4 rounded text-amber-500 focus:ring-amber-500" />
+                    <span class="text-sm font-medium text-slate-700">Include 5% Staff Service Charge</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right 5 Cols: Final Bill Summary & Payment Settlement -->
+          <div class="lg:col-span-5 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-5 sticky top-6">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 class="font-bold text-slate-900 text-lg">Invoice Summary</h3>
+              <span id="bill-preview-id" class="text-xs font-mono px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600">INV-DRAFT</span>
+            </div>
+
+            <!-- Totals Breakdown -->
+            <div class="space-y-2.5 text-sm">
+              <div class="flex justify-between text-slate-600">
+                <span>Item Subtotal</span>
+                <span id="bill-subtotal" class="font-semibold text-slate-900">₹0.00</span>
+              </div>
+              <div class="flex justify-between text-emerald-600">
+                <span id="bill-discount-name">Discount</span>
+                <span id="bill-discount-amount" class="font-semibold">-₹0.00</span>
+              </div>
+              <div class="flex justify-between text-slate-600">
+                <span id="bill-cgst-label">CGST (2.5%)</span>
+                <span id="bill-cgst-amount" class="font-medium">₹0.00</span>
+              </div>
+              <div class="flex justify-between text-slate-600">
+                <span id="bill-sgst-label">SGST (2.5%)</span>
+                <span id="bill-sgst-amount" class="font-medium">₹0.00</span>
+              </div>
+              <div id="bill-service-row" class="hidden flex justify-between text-slate-600">
+                <span>Service Charge (5%)</span>
+                <span id="bill-service-amount" class="font-medium">₹0.00</span>
+              </div>
+              <div class="flex justify-between text-slate-500 text-xs">
+                <span>Round Off</span>
+                <span id="bill-roundoff">₹0.00</span>
+              </div>
+              <div class="pt-3 border-t-2 border-dashed border-slate-200 flex justify-between items-center">
+                <span class="text-base font-bold text-slate-900">Grand Total Payable</span>
+                <span id="bill-grand-total" class="text-2xl font-extrabold text-slate-900">₹0.00</span>
+              </div>
+            </div>
+
+            <!-- Payment Mode Selector -->
+            <div class="space-y-3 pt-2">
+              <label class="block text-xs font-bold uppercase tracking-wider text-slate-400">Payment Method</label>
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2" id="payment-methods-grid">
+                <button type="button" data-method="CASH" class="pay-method-btn py-2.5 px-2 rounded-xl border-2 border-amber-500 bg-amber-50 text-amber-900 font-semibold text-xs flex flex-col items-center gap-1">
+                  <i class="fa-solid fa-money-bill-wave text-base"></i>
+                  <span>Cash</span>
+                </button>
+                <button type="button" data-method="UPI" class="pay-method-btn py-2.5 px-2 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 font-semibold text-xs flex flex-col items-center gap-1">
+                  <i class="fa-solid fa-qrcode text-base"></i>
+                  <span>UPI / QR</span>
+                </button>
+                <button type="button" data-method="CARD" class="pay-method-btn py-2.5 px-2 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 font-semibold text-xs flex flex-col items-center gap-1">
+                  <i class="fa-solid fa-credit-card text-base"></i>
+                  <span>Card</span>
+                </button>
+                <button type="button" data-method="SPLIT" class="pay-method-btn py-2.5 px-2 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 font-semibold text-xs flex flex-col items-center gap-1">
+                  <i class="fa-solid fa-code-branch text-base"></i>
+                  <span>Split</span>
+                </button>
+              </div>
+
+              <!-- Cash Tendered Calculator -->
+              <div id="cash-calculator-box" class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
+                <div class="flex items-center justify-between gap-3">
+                  <label class="text-xs font-semibold text-slate-600">Cash Tendered</label>
+                  <input type="number" id="bill-cash-tendered" min="0" step="10" placeholder="0" class="w-32 px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-right font-mono font-bold text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                </div>
+                <div class="flex items-center justify-between text-xs">
+                  <span class="text-slate-500">Change Return Due:</span>
+                  <span id="bill-change-due" class="font-mono font-bold text-emerald-600 text-sm">₹0.00</span>
+                </div>
+              </div>
+            </div>
+
+            <button id="complete-payment-btn" class="w-full py-3.5 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold text-sm shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-2">
+              <i class="fa-solid fa-circle-check"></i>
+              <span>Complete Payment & Generate Invoice</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================================= -->
+      <!-- 5. MENU MANAGEMENT VIEW                                   -->
+      <!-- ========================================================= -->
+      <section id="view-menu" class="hidden space-y-6">
+        <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div class="flex flex-col sm:flex-row gap-3 flex-1">
+            <div class="relative flex-1 max-w-md">
+              <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+              <input type="text" id="menu-manage-search" placeholder="Search menu items..." class="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
+            </div>
+            <select id="menu-manage-category" class="px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500">
+              <option value="ALL">All Categories</option>
+              <option value="Starters">Starters</option>
+              <option value="Main Course">Main Course</option>
+              <option value="Breads & Rice">Breads & Rice</option>
+              <option value="Beverages">Beverages</option>
+              <option value="Desserts">Desserts</option>
+            </select>
+          </div>
+
+          <button onclick="app.openMenuModal()" class="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold text-sm shadow-sm flex items-center justify-center gap-2">
+            <i class="fa-solid fa-plus"></i>
+            <span>Add Menu Item</span>
+          </button>
+        </div>
+
+        <!-- Menu Table -->
+        <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  <th class="py-3.5 px-4">Code</th>
+                  <th class="py-3.5 px-4">Dish Name</th>
+                  <th class="py-3.5 px-4">Category</th>
+                  <th class="py-3.5 px-4">Type</th>
+                  <th class="py-3.5 px-4">Price</th>
+                  <th class="py-3.5 px-4">Status</th>
+                  <th class="py-3.5 px-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="menu-manage-tbody" class="divide-y divide-slate-100 text-sm">
+                <!-- Populated dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================================= -->
+      <!-- 6. BILLING HISTORY & REPORTS VIEW                         -->
+      <!-- ========================================================= -->
+      <section id="view-history" class="hidden space-y-6">
+        <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div class="relative flex-1 max-w-md">
+            <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+            <input type="text" id="history-search" placeholder="Search by Invoice ID, Customer, or Table..." class="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
+          </div>
+          <select id="history-payment-filter" class="px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500">
+            <option value="ALL">All Payment Modes</option>
+            <option value="CASH">Cash</option>
+            <option value="UPI">UPI / QR</option>
+            <option value="CARD">Card</option>
+            <option value="SPLIT">Split</option>
+          </select>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  <th class="py-3.5 px-4">Invoice ID</th>
+                  <th class="py-3.5 px-4">Date & Time</th>
+                  <th class="py-3.5 px-4">Table / Mode</th>
+                  <th class="py-3.5 px-4">Customer</th>
+                  <th class="py-3.5 px-4">Payment</th>
+                  <th class="py-3.5 px-4">Discount</th>
+                  <th class="py-3.5 px-4">Grand Total</th>
+                  <th class="py-3.5 px-4 text-right">Receipt</th>
+                </tr>
+              </thead>
+              <tbody id="history-tbody" class="divide-y divide-slate-100 text-sm">
+                <!-- Populated dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- MODALS (Booking, Add Table, Menu Item, Receipt, Confirm)  -->
+  <!-- ========================================================= -->
+
+  <!-- 1. Table Reservation Modal -->
+  <div id="booking-modal" class="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
+      <div class="px-5 py-4 bg-slate-900 text-white flex items-center justify-between">
+        <h3 class="font-bold text-base flex items-center gap-2">
+          <i class="fa-solid fa-calendar-plus text-amber-400"></i>
+          <span id="booking-modal-title">Reserve Table</span>
+        </h3>
+        <button onclick="app.closeModal('booking-modal')" class="text-slate-400 hover:text-white">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+      <form id="booking-form" class="p-5 space-y-4">
+        <input type="hidden" id="booking-table-id" />
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Customer Full Name *</label>
+          <input type="text" id="booking-customer-name" required placeholder="e.g., Aarav Sharma" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Phone Number *</label>
+            <input type="tel" id="booking-phone" required placeholder="+91 98765 43210" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Party Size (Guests) *</label>
+            <input type="number" id="booking-guests" min="1" max="20" value="2" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Reservation Time *</label>
+          <input type="time" id="booking-time" required value="20:00" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Special Requests / Notes</label>
+          <input type="text" id="booking-notes" placeholder="Window seat, birthday celebration..." class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
+        </div>
+        <div class="flex justify-end gap-2.5 pt-2">
+          <button type="button" onclick="app.closeModal('booking-modal')" class="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50">Cancel</button>
+          <button type="submit" class="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-sm">Confirm Reservation</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 2. Add New Table Modal -->
+  <div id="add-table-modal" class="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
+      <div class="px-5 py-4 bg-slate-900 text-white flex items-center justify-between">
+        <h3 class="font-bold text-base flex items-center gap-2">
+          <i class="fa-solid fa-chair text-amber-400"></i>
+          <span>Add Restaurant Table</span>
+        </h3>
+        <button onclick="app.closeModal('add-table-modal')" class="text-slate-400 hover:text-white">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+      <form id="add-table-form" class="p-5 space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Table Label / Number *</label>
+          <input type="text" id="new-table-name" required placeholder="e.g., T11 or VIP-1" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Seating Capacity *</label>
+            <select id="new-table-capacity" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
+              <option value="2">2 Seater</option>
+              <option value="4" selected>4 Seater</option>
+              <option value="6">6 Seater</option>
+              <option value="8">8 Seater</option>
+              <option value="10">10 Seater (Banquet)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Dining Section</label>
+            <select id="new-table-zone" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
+              <option value="Main Hall">Main Hall</option>
+              <option value="Window Side">Window Side</option>
+              <option value="Patio / Garden">Patio / Garden</option>
+              <option value="Private Lounge">Private Lounge</option>
+            </select>
+          </div>
+        </div>
+        <div class="flex justify-end gap-2.5 pt-2">
+          <button type="button" onclick="app.closeModal('add-table-modal')" class="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50">Cancel</button>
+          <button type="submit" class="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold shadow-sm">Create Table</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 3. Add / Edit Menu Item Modal -->
+  <div id="menu-item-modal" class="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
+      <div class="px-5 py-4 bg-slate-900 text-white flex items-center justify-between">
+        <h3 class="font-bold text-base flex items-center gap-2">
+          <i class="fa-solid fa-utensils text-amber-400"></i>
+          <span id="menu-modal-title">Add Menu Item</span>
+        </h3>
+        <button onclick="app.closeModal('menu-item-modal')" class="text-slate-400 hover:text-white">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+      <form id="menu-item-form" class="p-5 space-y-4">
+        <input type="hidden" id="edit-menu-id" />
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Dish / Item Name *</label>
+          <input type="text" id="menu-item-name" required placeholder="e.g., Paneer Tikka Masala" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Category *</label>
+            <select id="menu-item-category" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
+              <option value="Starters">Starters</option>
+              <option value="Main Course">Main Course</option>
+              <option value="Breads & Rice">Breads & Rice</option>
+              <option value="Beverages">Beverages</option>
+              <option value="Desserts">Desserts</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Price *</label>
+            <input type="number" id="menu-item-price" min="1" step="0.5" required placeholder="280" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Dietary Type</label>
+            <select id="menu-item-veg" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
+              <option value="true">🟢 Vegetarian</option>
+              <option value="false">🔴 Non-Vegetarian</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Availability</label>
+            <select id="menu-item-available" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
+              <option value="true">In Stock</option>
+              <option value="false">Out of Stock</option>
+            </select>
+          </div>
+        </div>
+        <div class="flex justify-end gap-2.5 pt-2">
+          <button type="button" onclick="app.closeModal('menu-item-modal')" class="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50">Cancel</button>
+          <button type="submit" class="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-sm font-bold shadow-sm">Save Dish</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 4. Itemized Tax Invoice / Receipt Modal -->
+  <div id="receipt-modal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-50 hidden items-center justify-center p-4 overflow-y-auto">
+    <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden my-auto">
+      <div class="px-5 py-3.5 bg-slate-900 text-white flex items-center justify-between no-print">
+        <span class="font-bold text-sm flex items-center gap-2">
+          <i class="fa-solid fa-receipt text-emerald-400"></i> Tax Invoice Generated
+        </span>
+        <button onclick="app.closeModal('receipt-modal')" class="text-slate-400 hover:text-white">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <!-- Printable Receipt Body -->
+      <div id="printable-receipt" class="p-6 bg-white text-slate-800 font-mono text-xs space-y-4">
+        <div class="text-center border-b border-dashed border-slate-300 pb-3 space-y-1">
+          <h4 class="font-sans font-extrabold text-lg text-slate-900 tracking-tight">DINEFLOW BISTRO & KITCHEN</h4>
+          <p class="text-[11px] text-slate-500">42 Connaught Place, New Delhi - 110001</p>
+          <p class="text-[11px] text-slate-500">GSTIN: 07AAACD1234F1Z5 | Ph: +91 11 4050 8899</p>
+        </div>
+
+        <div id="receipt-meta" class="grid grid-cols-2 gap-y-1 text-[11px] border-b border-dashed border-slate-300 pb-3">
+          <!-- Populated dynamically -->
+        </div>
+
+        <div>
+          <table class="w-full text-[11px]">
+            <thead>
+              <tr class="border-b border-slate-300 text-slate-500">
+                <th class="text-left py-1">ITEM</th>
+                <th class="text-center py-1">QTY</th>
+                <th class="text-right py-1">RATE</th>
+                <th class="text-right py-1">AMT</th>
+              </tr>
+            </thead>
+            <tbody id="receipt-items-tbody" class="divide-y divide-slate-100">
+              <!-- Populated dynamically -->
+            </tbody>
+          </table>
+        </div>
+
+        <div id="receipt-totals" class="border-t border-dashed border-slate-300 pt-3 space-y-1 text-[11px]">
+          <!-- Populated dynamically -->
+        </div>
+
+        <div class="text-center border-t border-dashed border-slate-300 pt-3 space-y-1 text-[11px] text-slate-500">
+          <p class="font-semibold text-slate-700">Thank you for dining with us!</p>
+          <p>Computer Generated Invoice • Have a great day</p>
+        </div>
+      </div>
+
+      <div class="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2.5 no-print">
+        <button onclick="app.closeModal('receipt-modal')" class="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs font-semibold hover:bg-slate-100">Close</button>
+        <button onclick="window.print()" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold flex items-center gap-2 shadow-sm">
+          <i class="fa-solid fa-print"></i>
+          <span>Print Receipt</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. Custom Confirmation Modal (Replaces window.confirm) -->
+  <div id="confirm-modal" class="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-sm w-full shadow-2xl border border-slate-200 p-5 space-y-4">
+      <div class="flex items-start gap-3">
+        <div class="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+          <i class="fa-solid fa-triangle-exclamation text-lg"></i>
+        </div>
+        <div>
+          <h4 id="confirm-title" class="font-bold text-slate-900 text-base">Confirm Action</h4>
+          <p id="confirm-message" class="text-xs text-slate-500 mt-1">Are you sure you want to proceed?</p>
+        </div>
+      </div>
+      <div class="flex justify-end gap-2 pt-2">
+        <button id="confirm-cancel-btn" class="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 text-xs font-semibold hover:bg-slate-50">Cancel</button>
+        <button id="confirm-ok-btn" class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold">Yes, Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none px-4 sm:px-0"></div>
+
+  <!-- ========================================================= -->
+  <!-- JAVASCRIPT DOMAIN MODELS & POS ENGINE                     -->
+  <!-- ========================================================= -->
+  <script>
+    /**
+     * Domain Model: Table
+     * Mirrors Restaurant_billing/src/Table.java
+     */
+    class Table {
+      constructor(id, name, capacity, zone = 'Main Hall', status = 'AVAILABLE', reservation = null, activeOrderId = null) {
+        this.id = id;
+        this.name = name;
+        this.capacity = Number(capacity);
+        this.zone = zone;
+        this.status = status; // 'AVAILABLE' | 'OCCUPIED' | 'RESERVED'
+        this.reservation = reservation; // { customerName, phone, guests, time, notes }
+        this.activeOrderId = activeOrderId;
+      }
+    }
+
+    /**
+     * Domain Model: MenuItem
+     * Mirrors Restaurant_billing/src/MenuItem.java
+     */
+    class MenuItem {
+      constructor(id, name, category, price, isVeg = true, available = true) {
+        this.id = id;
+        this.name = name;
+        this.category = category;
+        this.price = Number(price);
+        this.isVeg = Boolean(isVeg);
+        this.available = Boolean(available);
+      }
+    }
+
+    /**
+     * Domain Model: Order
+     * Mirrors Restaurant_billing/src/Order.java
+     */
+    class Order {
+      constructor(id, tableId, tableName, customerName = 'Walk-in Guest', items = [], createdAt = new Date().toISOString()) {
+        this.id = id;
+        this.tableId = tableId; // 'TAKEAWAY' or Table ID
+        this.tableName = tableName;
+        this.customerName = customerName;
+        this.items = items; // [{ menuItemId, name, price, isVeg, quantity, note }]
+        this.createdAt = createdAt;
+        this.status = 'OPEN'; // 'OPEN' | 'BILLED'
+      }
+
+      getSubtotal() {
+        return this.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+      }
+
+      getTotalQuantity() {
+        return this.items.reduce((sum, item) => sum + item.quantity, 0);
+      }
+    }
+
+    /**
+     * Domain Model: DiscountPolicy
+     * Mirrors Restaurant_billing/src/DiscountPolicy.java
+     */
+    class DiscountPolicy {
+      static calculate(policyCode, subtotal, customVal = 0) {
+        switch (policyCode) {
+          case 'WELCOME10':
+            return { label: 'Promo WELCOME10 (10%)', amount: subtotal * 0.10 };
+          case 'FESTIVE20':
+            return { label: 'Promo FESTIVE20 (20%)', amount: subtotal * 0.20 };
+          case 'LOYALTY15':
+            return { label: 'Loyalty Tier (15%)', amount: subtotal * 0.15 };
+          case 'CUSTOM_PERCENT': {
+            const pct = Math.min(100, Math.max(0, Number(customVal) || 0));
+            return { label: `Custom Discount (${pct}%)`, amount: subtotal * (pct / 100) };
+          }
+          case 'CUSTOM_FLAT': {
+            const flat = Math.min(subtotal, Math.max(0, Number(customVal) || 0));
+            return { label: 'Flat Discount', amount: flat };
+          }
+          default:
+            return { label: 'No Discount', amount: 0 };
+        }
+      }
+    }
+
+    /**
+     * Domain Model: Bill
+     * Mirrors Restaurant_billing/src/Bill.java
+     */
+    class Bill {
+      constructor({ id, orderId, tableId, tableName, customerName, items, subtotal, discountLabel, discountAmount, taxRate, cgst, sgst, serviceCharge, roundOff, grandTotal, paymentMethod, settledAt }) {
+        this.id = id;
+        this.orderId = orderId;
+        this.tableId = tableId;
+        this.tableName = tableName;
+        this.customerName = customerName;
+        this.items = items;
+        this.subtotal = subtotal;
+        this.discountLabel = discountLabel;
+        this.discountAmount = discountAmount;
+        this.taxRate = taxRate;
+        this.cgst = cgst;
+        this.sgst = sgst;
+        this.serviceCharge = serviceCharge;
+        this.roundOff = roundOff;
+        this.grandTotal = grandTotal;
+        this.paymentMethod = paymentMethod;
+        this.settledAt = settledAt || new Date().toISOString();
+      }
+    }
+
+    /**
+     * Core Service Layer: RestaurantService
+     * Mirrors Restaurant_billing/src/RestaurantService.java with localStorage persistence
+     */
+    class RestaurantService {
+      constructor() {
+        this.STORAGE_KEY = 'dineflow_pos_state_v1';
+        this.currency = '₹';
+        this.tables = [];
+        this.menu = [];
+        this.orders = [];
+        this.bills = [];
+        this.loadState();
+      }
+
+      loadState() {
+        try {
+          const raw = localStorage.getItem(this.STORAGE_KEY);
+          if (raw) {
+            const data = JSON.parse(raw);
+            this.currency = data.currency || '₹';
+            this.tables = (data.tables || []).map(t => new Table(t.id, t.name, t.capacity, t.zone, t.status, t.reservation, t.activeOrderId));
+            this.menu = (data.menu || []).map(m => new MenuItem(m.id, m.name, m.category, m.price, m.isVeg, m.available));
+            this.orders = (data.orders || []).map(o => {
+              const ord = new Order(o.id, o.tableId, o.tableName, o.customerName, o.items, o.createdAt);
+              ord.status = o.status;
+              return ord;
+            });
+            this.bills = (data.bills || []).map(b => new Bill(b));
+            return;
+          }
+        } catch (e) {
+          console.error('Failed to parse saved state, initializing demo data.', e);
+        }
+        this.seedDemoData();
+      }
+
+      saveState() {
+        try {
+          localStorage.setItem(
+            this.STORAGE_KEY,
+            JSON.stringify({
+              currency: this.currency,
+              tables: this.tables,
+              menu: this.menu,
+              orders: this.orders,
+              bills: this.bills,
+            })
+          );
+        } catch (e) {
+          console.error('Error saving state to localStorage', e);
+        }
+      }
+
+      seedDemoData() {
+        this.currency = '₹';
+
+        // 10 Restaurant Tables
+        this.tables = [
+          new Table('T1', 'T1', 2, 'Window Side', 'AVAILABLE'),
+          new Table('T2', 'T2', 2, 'Window Side', 'OCCUPIED', null, 'ORD-1001'),
+          new Table('T3', 'T3', 4, 'Main Hall', 'AVAILABLE'),
+          new Table('T4', 'T4', 4, 'Main Hall', 'RESERVED', {
+            customerName: 'Rohan Mehta',
+            phone: '+91 98112 44510',
+            guests: 4,
+            time: '21:30',
+            notes: 'Anniversary dinner',
+          }),
+          new Table('T5', 'T5', 4, 'Main Hall', 'OCCUPIED', null, 'ORD-1002'),
+          new Table('T6', 'T6', 6, 'Main Hall', 'AVAILABLE'),
+          new Table('T7', 'T7', 6, 'Patio / Garden', 'AVAILABLE'),
+          new Table('T8', 'T8', 6, 'Patio / Garden', 'RESERVED', {
+            customerName: 'Priya Nair',
+            phone: '+91 99100 77821',
+            guests: 5,
+            time: '22:00',
+            notes: 'High chair needed',
+          }),
+          new Table('T9', 'T9', 8, 'Private Lounge', 'AVAILABLE'),
+          new Table('T10', 'T10', 8, 'Private Lounge', 'AVAILABLE'),
+        ];
+
+        // Rich Restaurant Menu
+        this.menu = [
+          new MenuItem('M101', 'Paneer Tikka Angara', 'Starters', 320, true, true),
+          new MenuItem('M102', 'Crispy Chilli Baby Corn', 'Starters', 270, true, true),
+          new MenuItem('M103', 'Murgh Malai Kebab', 'Starters', 380, false, true),
+          new MenuItem('M104', 'Tandoori Prawns', 'Starters', 460, false, true),
+          new MenuItem('M201', 'Dal Makhani Signature', 'Main Course', 340, true, true),
+          new MenuItem('M202', 'Paneer Lababdar', 'Main Course', 360, true, true),
+          new MenuItem('M203', 'Butter Chicken Classic', 'Main Course', 440, false, true),
+          new MenuItem('M204', 'Mutton Rogan Josh', 'Main Course', 520, false, true),
+          new MenuItem('M301', 'Butter Garlic Naan', 'Breads & Rice', 75, true, true),
+          new MenuItem('M302', 'Tandoori Roti', 'Breads & Rice', 45, true, true),
+          new MenuItem('M303', 'Subz Dum Biryani', 'Breads & Rice', 350, true, true),
+          new MenuItem('M304', 'Hyderabadi Chicken Biryani', 'Breads & Rice', 420, false, true),
+          new MenuItem('M401', 'Fresh Lime Soda', 'Beverages', 110, true, true),
+          new MenuItem('M402', 'Mango Lassi', 'Beverages', 140, true, true),
+          new MenuItem('M403', 'Cold Brew Iced Coffee', 'Beverages', 180, true, true),
+          new MenuItem('M501', 'Sizzling Walnut Brownie', 'Desserts', 240, true, true),
+          new MenuItem('M502', 'Saffron Rasmalai (2 Pcs)', 'Desserts', 190, true, true),
+        ];
+
+        // Two Live Active Orders on T2 & T5
+        this.orders = [
+          new Order(
+            'ORD-1001',
+            'T2',
+            'T2 (Window Side)',
+            'Vikramaditya Sen',
+            [
+              { menuItemId: 'M101', name: 'Paneer Tikka Angara', price: 320, isVeg: true, quantity: 1, note: 'Extra mint chutney' },
+              { menuItemId: 'M201', name: 'Dal Makhani Signature', price: 340, isVeg: true, quantity: 1, note: '' },
+              { menuItemId: 'M301', name: 'Butter Garlic Naan', price: 75, isVeg: true, quantity: 3, note: '' },
+              { menuItemId: 'M401', name: 'Fresh Lime Soda', price: 110, isVeg: true, quantity: 2, note: 'Sweet & salted' },
+            ],
+            new Date(Date.now() - 35 * 60000).toISOString()
+          ),
+          new Order(
+            'ORD-1002',
+            'T5',
+            'T5 (Main Hall)',
+            'Ananya Verma',
+            [
+              { menuItemId: 'M103', name: 'Murgh Malai Kebab', price: 380, isVeg: false, quantity: 1, note: '' },
+              { menuItemId: 'M203', name: 'Butter Chicken Classic', price: 440, isVeg: false, quantity: 1, note: 'Medium spicy' },
+              { menuItemId: 'M304', name: 'Hyderabadi Chicken Biryani', price: 420, isVeg: false, quantity: 1, note: '' },
+              { menuItemId: 'M402', name: 'Mango Lassi', price: 140, isVeg: true, quantity: 2, note: '' },
+            ],
+            new Date(Date.now() - 18 * 60000).toISOString()
+          ),
+        ];
+
+        // Two Sample Settled Bills in History
+        this.bills = [
+          new Bill({
+            id: 'INV-2026-081',
+            orderId: 'ORD-0998',
+            tableId: 'T3',
+            tableName: 'T3 (Main Hall)',
+            customerName: 'Siddharth Kapoor',
+            items: [
+              { menuItemId: 'M202', name: 'Paneer Lababdar', price: 360, quantity: 1 },
+              { menuItemId: 'M301', name: 'Butter Garlic Naan', price: 75, quantity: 2 },
+              { menuItemId: 'M502', name: 'Saffron Rasmalai (2 Pcs)', price: 190, quantity: 1 },
+            ],
+            subtotal: 700,
+            discountLabel: 'Promo WELCOME10 (10%)',
+            discountAmount: 70,
+            taxRate: 5,
+            cgst: 15.75,
+            sgst: 15.75,
+            serviceCharge: 0,
+            roundOff: 0.5,
+            grandTotal: 662,
+            paymentMethod: 'UPI',
+            settledAt: new Date(Date.now() - 120 * 60000).toISOString(),
+          }),
+          new Bill({
+            id: 'INV-2026-082',
+            orderId: 'ORD-0999',
+            tableId: 'TAKEAWAY',
+            tableName: 'Takeaway Counter',
+            customerName: 'Meera Joshi',
+            items: [
+              { menuItemId: 'M304', name: 'Hyderabadi Chicken Biryani', price: 420, quantity: 2 },
+              { menuItemId: 'M103', name: 'Murgh Malai Kebab', price: 380, quantity: 1 },
+            ],
+            subtotal: 1220,
+            discountLabel: 'No Discount',
+            discountAmount: 0,
+            taxRate: 5,
+            cgst: 30.5,
+            sgst: 30.5,
+            serviceCharge: 0,
+            roundOff: 0,
+            grandTotal: 1281,
+            paymentMethod: 'CARD',
+            settledAt: new Date(Date.now() - 65 * 60000).toISOString(),
+          }),
+        ];
+
+        this.saveState();
+      }
+    }
+
+    /**
+     * UI Controller & Application State Manager
+     */
+    class POSApp {
+      constructor() {
+        this.service = new RestaurantService();
+        this.activeTab = 'dashboard';
+        this.tableFilter = 'ALL';
+        this.posCategory = 'ALL';
+        this.selectedPaymentMethod = 'CASH';
+
+        // Draft Cart State for POS Screen
+        this.draftOrder = {
+          id: null,
+          tableId: 'T1',
+          customerName: '',
+          items: [],
+        };
+
+        this.init();
+      }
+
+      init() {
+        this.bindEvents();
+        this.startClock();
+        this.syncDefaultDraftOrder();
+        this.renderAll();
+      }
+
+      formatMoney(amount) {
+        const val = Number(amount || 0);
+        return `${this.service.currency}${val.toLocaleString('en-IN', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })}`;
+      }
+
+      showToast(message, type = 'success') {
+        const container = document.getElementById('toast-container');
+        const colors = {
+          success: 'bg-slate-900 text-white border-emerald-500',
+          error: 'bg-rose-950 text-white border-rose-500',
+          info: 'bg-slate-900 text-white border-amber-400',
+        };
+        const icons = {
+          success: 'fa-circle-check text-emerald-400',
+          error: 'fa-circle-exclamation text-rose-400',
+          info: 'fa-circle-info text-amber-400',
+        };
+
+        const toast = document.createElement('div');
+        toast.className = `pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl border-l-4 shadow-xl text-xs font-medium transition-all duration-300 ${colors[type] || colors.success}`;
+        toast.innerHTML = `<i class="fa-solid ${icons[type] || icons.success} text-base"></i><span>${message}</span>`;
+        container.appendChild(toast);
+
+        setTimeout(() => {
+          toast.classList.add('opacity-0', 'translate-y-2');
+          setTimeout(() => toast.remove(), 300);
+        }, 3000);
+      }
+
+      confirmAction(title, message, onConfirm) {
+        const modal = document.getElementById('confirm-modal');
+        document.getElementById('confirm-title').textContent = title;
+        document.getElementById('confirm-message').textContent = message;
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+
+        const okBtn = document.getElementById('confirm-ok-btn');
+        const cancelBtn = document.getElementById('confirm-cancel-btn');
+
+        const cleanup = () => {
+          modal.classList.add('hidden');
+          modal.classList.remove('flex');
+          okBtn.onclick = null;
+          cancelBtn.onclick = null;
+        };
+
+        cancelBtn.onclick = cleanup;
+        okBtn.onclick = () => {
+          cleanup();
+          onConfirm();
+        };
+      }
+
+      openModal(id) {
+        const el = document.getElementById(id);
+        el.classList.remove('hidden');
+        el.classList.add('flex');
+      }
+
+      closeModal(id) {
+        const el = document.getElementById(id);
+        el.classList.add('hidden');
+        el.classList.remove('flex');
+      }
+
+      startClock() {
+        const update = () => {
+          const now = new Date();
+          document.getElementById('live-clock').textContent = now.toLocaleString('en-IN', {
+            weekday: 'short',
+            day: '2-digit',
+            month: 'short',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+          });
+        };
+        update();
+        setInterval(update, 1000);
+      }
+
+      bindEvents() {
+        // Navigation Tabs
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            this.switchTab(btn.dataset.tab);
+            this.closeMobileSidebar();
+          });
+        });
+
+        // Mobile Sidebar Toggles
+        document.getElementById('mobile-menu-btn').addEventListener('click', () => {
+          document.getElementById('sidebar').classList.remove('-translate-x-full');
+          document.getElementById('sidebar-backdrop').classList.remove('hidden');
+        });
+        const closeSidebar = () => this.closeMobileSidebar();
+        document.getElementById('close-sidebar-btn').addEventListener('click', closeSidebar);
+        document.getElementById('sidebar-backdrop').addEventListener('click', closeSidebar);
+
+        // Currency Selector
+        const currencySelect = document.getElementById('currency-select');
+        currencySelect.value = this.service.currency;
+        currencySelect.addEventListener('change', e => {
+          this.service.currency = e.target.value;
+          this.service.saveState();
+          this.renderAll();
+          this.showToast(`Currency updated to ${this.service.currency}`, 'info');
+        });
+
+        // Reset Demo Data
+        document.getElementById('reset-demo-btn').addEventListener('click', () => {
+          this.confirmAction(
+            'Reset Demo Data?',
+            'This will restore the default 10 tables, menu items, sample active orders, and invoice history.',
+            () => {
+              this.service.seedDemoData();
+              this.syncDefaultDraftOrder();
+              this.renderAll();
+              this.showToast('Demo restaurant data has been restored.');
+            }
+          );
+        });
+
+        // Table Status Filter Buttons
+        document.querySelectorAll('.table-filter-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            this.tableFilter = btn.dataset.status;
+            document.querySelectorAll('.table-filter-btn').forEach(b => {
+              b.className = 'table-filter-btn px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200';
+            });
+            btn.className = 'table-filter-btn px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-900 text-white';
+            this.renderTables();
+          });
+        });
+
+        // Booking Form Submit
+        document.getElementById('booking-form').addEventListener('submit', e => {
+          e.preventDefault();
+          const tableId = document.getElementById('booking-table-id').value;
+          const table = this.service.tables.find(t => t.id === tableId);
+          if (!table) return;
+
+          table.status = 'RESERVED';
+          table.reservation = {
+            customerName: document.getElementById('booking-customer-name').value.trim(),
+            phone: document.getElementById('booking-phone').value.trim(),
+            guests: Number(document.getElementById('booking-guests').value),
+            time: document.getElementById('booking-time').value,
+            notes: document.getElementById('booking-notes').value.trim(),
+          };
+
+          this.service.saveState();
+          this.closeModal('booking-modal');
+          this.renderAll();
+          this.showToast(`Table ${table.name} reserved for ${table.reservation.customerName}`);
+        });
+
+        // Add Table Form Submit
+        document.getElementById('add-table-form').addEventListener('submit', e => {
+          e.preventDefault();
+          const name = document.getElementById('new-table-name').value.trim();
+          const capacity = Number(document.getElementById('new-table-capacity').value);
+          const zone = document.getElementById('new-table-zone').value;
+
+          if (this.service.tables.some(t => t.name.toLowerCase() === name.toLowerCase())) {
+            this.showToast(`Table "${name}" already exists!`, 'error');
+            return;
+          }
+
+          const newTable = new Table('T-' + Date.now().toString().slice(-4), name, capacity, zone, 'AVAILABLE');
+          this.service.tables.push(newTable);
+          this.service.saveState();
+          this.closeModal('add-table-modal');
+          document.getElementById('add-table-form').reset();
+          this.renderAll();
+          this.showToast(`Added Table ${name} (${capacity} Seats)`);
+        });
+
+        // POS Search & Filter
+        document.getElementById('pos-search-input').addEventListener('input', () => this.renderPOSMenu());
+        document.getElementById('pos-diet-filter').addEventListener('change', () => this.renderPOSMenu());
+
+        // POS Table Select Change
+        document.getElementById('pos-table-select').addEventListener('change', e => {
+          this.loadTableIntoPOS(e.target.value);
+        });
+
+        // POS Customer Name Sync
+        document.getElementById('pos-customer-name').addEventListener('input', e => {
+          this.draftOrder.customerName = e.target.value;
+        });
+
+        // Save Order (KOT) Button
+        document.getElementById('pos-save-order-btn').addEventListener('click', () => {
+          this.savePOSOrder(false);
+        });
+
+        // Proceed to Bill Button
+        document.getElementById('pos-proceed-bill-btn').addEventListener('click', () => {
+          const savedOrder = this.savePOSOrder(true);
+          if (savedOrder) {
+            this.switchTab('billing');
+            document.getElementById('bill-order-select').value = savedOrder.id;
+            this.renderBillingScreen();
+          }
+        });
+
+        // Billing Screen Listeners
+        document.getElementById('bill-order-select').addEventListener('change', () => this.renderBillingScreen());
+        document.getElementById('bill-discount-policy').addEventListener('change', e => {
+          const wrapper = document.getElementById('custom-discount-wrapper');
+          const label = document.getElementById('custom-discount-label');
+          if (e.target.value === 'CUSTOM_PERCENT') {
+            wrapper.classList.remove('hidden');
+            label.textContent = 'Custom Discount (%)';
+          } else if (e.target.value === 'CUSTOM_FLAT') {
+            wrapper.classList.remove('hidden');
+            label.textContent = `Custom Flat Off (${this.service.currency})`;
+          } else {
+            wrapper.classList.add('hidden');
+          }
+          this.recalculateBill();
+        });
+        document.getElementById('bill-custom-discount-val').addEventListener('input', () => this.recalculateBill());
+        document.getElementById('bill-tax-rate').addEventListener('change', () => this.recalculateBill());
+        document.getElementById('bill-service-charge').addEventListener('change', () => this.recalculateBill());
+        document.getElementById('bill-cash-tendered').addEventListener('input', () => this.updateCashChange());
+
+        // Payment Method Buttons
+        document.querySelectorAll('.pay-method-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            this.selectedPaymentMethod = btn.dataset.method;
+            document.querySelectorAll('.pay-method-btn').forEach(b => {
+              b.className = 'pay-method-btn py-2.5 px-2 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 font-semibold text-xs flex flex-col items-center gap-1';
+            });
+            btn.className = 'pay-method-btn py-2.5 px-2 rounded-xl border-2 border-amber-500 bg-amber-50 text-amber-900 font-semibold text-xs flex flex-col items-center gap-1';
+
+            const cashBox = document.getElementById('cash-calculator-box');
+            if (this.selectedPaymentMethod === 'CASH') {
+              cashBox.classList.remove('hidden');
+            } else {
+              cashBox.classList.add('hidden');
+            }
+          });
+        });
+
+        // Complete Payment Button
+        document.getElementById('complete-payment-btn').addEventListener('click', () => this.settleCurrentBill());
+
+        // Menu Management Search & Form
+        document.getElementById('menu-manage-search').addEventListener('input', () => this.renderMenuManagement());
+        document.getElementById('menu-manage-category').addEventListener('change', () => this.renderMenuManagement());
+        document.getElementById('menu-item-form').addEventListener('submit', e => {
+          e.preventDefault();
+          this.saveMenuItemForm();
+        });
+
+        // History Search & Filter
+        document.getElementById('history-search').addEventListener('input', () => this.renderHistory());
+        document.getElementById('history-payment-filter').addEventListener('change', () => this.renderHistory());
+      }
+
+      closeMobileSidebar() {
+        document.getElementById('sidebar').classList.add('-translate-x-full');
+        document.getElementById('sidebar-backdrop').classList.add('hidden');
+      }
+
+      switchTab(tabName) {
+        this.activeTab = tabName;
+
+        // Update Sidebar Button States
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+          if (btn.dataset.tab === tabName) {
+            btn.className = 'nav-btn w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-sm font-medium transition-all bg-amber-500 text-slate-950 shadow-sm';
+          } else {
+            btn.className = 'nav-btn w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all';
+          }
+        });
+
+        // Hide all sections & show active
+        const sections = ['dashboard', 'tables', 'pos', 'billing', 'menu', 'history'];
+        sections.forEach(sec => {
+          const el = document.getElementById(`view-${sec}`);
+          if (sec === tabName) el.classList.remove('hidden');
+          else el.classList.add('hidden');
+        });
+
+        // Update Page Header Titles
+        const meta = {
+          dashboard: ['Dashboard Overview', 'Live floor status, active orders, and daily revenue summary.'],
+          tables: ['Tables & Reservations', 'Manage dining floor, book reservations, and seat walk-in guests.'],
+          pos: ['Order Taking & POS Cart', 'Select a table or takeaway counter and send orders to the kitchen.'],
+          billing: ['Billing & Payment Checkout', 'Apply discounts, calculate GST, and generate customer tax invoices.'],
+          menu: ['Menu Management', 'Add new dishes, update prices, and toggle item availability.'],
+          history: ['Billing History & Invoices', 'Search settled bills and reprint customer receipts anytime.'],
+        };
+        document.getElementById('page-title').textContent = meta[tabName][0];
+        document.getElementById('page-subtitle').textContent = meta[tabName][1];
+
+        this.renderAll();
+      }
+
+      renderAll() {
+        this.updateBadges();
+        this.renderDashboard();
+        this.renderTables();
+        this.renderPOSTableDropdown();
+        this.renderPOSMenu();
+        this.renderPOSCart();
+        this.renderBillingScreen();
+        this.renderMenuManagement();
+        this.renderHistory();
+      }
+
+      updateBadges() {
+        const occupied = this.service.tables.filter(t => t.status === 'OCCUPIED').length;
+        const totalTables = this.service.tables.length;
+        const openOrders = this.service.orders.filter(o => o.status === 'OPEN').length;
+
+        document.getElementById('nav-occupied-badge').textContent = `${occupied}/${totalTables}`;
+        document.getElementById('nav-orders-badge').textContent = openOrders;
+      }
+
+      // =========================================================
+      // 1. DASHBOARD RENDERING
+      // =========================================================
+      renderDashboard() {
+        const totalRev = this.service.bills.reduce((s, b) => s + b.grandTotal, 0);
+        const openOrders = this.service.orders.filter(o => o.status === 'OPEN');
+        const runningVal = openOrders.reduce((s, o) => s + o.getSubtotal(), 0);
+        const occupied = this.service.tables.filter(t => t.status === 'OCCUPIED').length;
+        const available = this.service.tables.filter(t => t.status === 'AVAILABLE').length;
+        const reserved = this.service.tables.filter(t => t.status === 'RESERVED').length;
+
+        document.getElementById('kpi-revenue').textContent = this.formatMoney(totalRev);
+        document.getElementById('kpi-bills-count').textContent = `${this.service.bills.length} bills settled`;
+        document.getElementById('kpi-active-orders').textContent = openOrders.length;
+        document.getElementById('kpi-running-value').textContent = `Running subtotal: ${this.formatMoney(runningVal)}`;
+        document.getElementById('kpi-tables-occupied').textContent = `${occupied} / ${this.service.tables.length}`;
+        document.getElementById('kpi-tables-available').textContent = `${available} available now`;
+        document.getElementById('kpi-reserved-count').textContent = reserved;
+
+        // Dashboard Mini Floor Grid
+        const grid = document.getElementById('dashboard-tables-grid');
+        grid.innerHTML = this.service.tables
+          .map(t => {
+            const order = t.activeOrderId ? this.service.orders.find(o => o.id === t.activeOrderId) : null;
+            const styles = {
+              AVAILABLE: 'border-emerald-200 bg-emerald-50/50 hover:border-emerald-400',
+              OCCUPIED: 'border-amber-300 bg-amber-50/70 hover:border-amber-500',
+              RESERVED: 'border-blue-200 bg-blue-50/60 hover:border-blue-400',
+            };
+            const dotColors = {
+              AVAILABLE: 'bg-emerald-500',
+              OCCUPIED: 'bg-amber-500',
+              RESERVED: 'bg-blue-500',
+            };
+            return `
+              <button onclick="app.handleQuickTableClick('${t.id}')" class="p-3.5 rounded-xl border text-left transition-all ${styles[t.status]}">
+                <div class="flex items-center justify-between">
+                  <span class="font-bold text-slate-900 text-sm">${t.name}</span>
+                  <span class="w-2.5 h-2.5 rounded-full ${dotColors[t.status]}"></span>
+                </div>
+                <p class="text-[11px] text-slate-500 mt-0.5">${t.capacity} Seats • ${t.status}</p>
+                <p class="text-xs font-semibold mt-2 truncate ${order ? 'text-amber-700' : 'text-slate-400'}">
+                  ${order ? this.formatMoney(order.getSubtotal()) : t.status === 'RESERVED' ? t.reservation?.time || 'Reserved' : 'Tap to seat'}
+                </p>
+              </button>
+            `;
+          })
+          .join('');
+
+        // Recent Bills List
+        const recentContainer = document.getElementById('dashboard-recent-bills');
+        const recent = [...this.service.bills].reverse().slice(0, 5);
+        if (!recent.length) {
+          recentContainer.innerHTML = `<p class="text-xs text-slate-400 text-center py-8">No settled bills yet.</p>`;
+        } else {
+          recentContainer.innerHTML = recent
+            .map(
+              b => `
+              <div class="p-3 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between gap-2">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-2">
+                    <span class="font-mono font-bold text-xs text-slate-800">${b.id}</span>
+                    <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-semibold">${b.paymentMethod}</span>
+                  </div>
+                  <p class="text-xs text-slate-500 truncate mt-0.5">${b.tableName} • ${b.customerName}</p>
+                </div>
+                <div class="text-right shrink-0">
+                  <p class="font-bold text-sm text-slate-900">${this.formatMoney(b.grandTotal)}</p>
+                  <button onclick="app.viewReceipt('${b.id}')" class="text-[11px] font-semibold text-amber-600 hover:underline">Receipt</button>
+                </div>
+              </div>
+            `
+            )
+            .join('');
+        }
+      }
+
+      handleQuickTableClick(tableId) {
+        const table = this.service.tables.find(t => t.id === tableId);
+        if (!table) return;
+        if (table.status === 'AVAILABLE') {
+          this.seatGuestsNow(table.id);
+        } else if (table.status === 'OCCUPIED') {
+          this.switchTab('pos');
+          this.loadTableIntoPOS(table.id);
+        } else {
+          this.switchTab('tables');
+        }
+      }
+
+      // =========================================================
+      // 2. TABLES & RESERVATIONS RENDERING & ACTIONS
+      // =========================================================
+      renderTables() {
+        const grid = document.getElementById('tables-grid');
+        const filtered = this.service.tables.filter(t => this.tableFilter === 'ALL' || t.status === this.tableFilter);
+
+        if (!filtered.length) {
+          grid.innerHTML = `<div class="col-span-full bg-white rounded-2xl p-10 text-center text-slate-400 border border-slate-200">No tables match the selected filter.</div>`;
+          return;
+        }
+
+        grid.innerHTML = filtered
+          .map(t => {
+            const order = t.activeOrderId ? this.service.orders.find(o => o.id === t.activeOrderId) : null;
+
+            const badgeStyles = {
+              AVAILABLE: 'bg-emerald-100 text-emerald-800',
+              OCCUPIED: 'bg-amber-100 text-amber-800',
+              RESERVED: 'bg-blue-100 text-blue-800',
+            };
+
+            const cardBorder = {
+              AVAILABLE: 'border-slate-200',
+              OCCUPIED: 'border-amber-300 ring-1 ring-amber-200',
+              RESERVED: 'border-blue-300 ring-1 ring-blue-100',
+            };
+
+            let middleContent = '';
+            let actionButtons = '';
+
+            if (t.status === 'AVAILABLE') {
+              middleContent = `
+                <div class="py-3 text-xs text-slate-400 flex items-center gap-2">
+                  <i class="fa-solid fa-sparkles text-emerald-500"></i>
+                  <span>Ready for walk-ins or booking</span>
+                </div>
+              `;
+              actionButtons = `
+                <button onclick="app.seatGuestsNow('${t.id}')" class="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors">
+                  Seat Now
+                </button>
+                <button onclick="app.openBookingModal('${t.id}')" class="flex-1 py-2 px-3 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold transition-colors">
+                  Book / Reserve
+                </button>
+              `;
+            } else if (t.status === 'RESERVED') {
+              const r = t.reservation || {};
+              middleContent = `
+                <div class="p-2.5 rounded-xl bg-blue-50/80 border border-blue-100 text-xs space-y-1">
+                  <div class="flex justify-between font-semibold text-blue-950">
+                    <span>${r.customerName || 'Guest'} (${r.guests || t.capacity}p)</span>
+                    <span class="font-mono">${r.time || ''}</span>
+                  </div>
+                  <p class="text-[11px] text-blue-700">${r.phone || ''}</p>
+                  ${r.notes ? `<p class="text-[11px] text-slate-500 italic">"${r.notes}"</p>` : ''}
+                </div>
+              `;
+              actionButtons = `
+                <button onclick="app.seatReservedTable('${t.id}')" class="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors">
+                  Seat Guests
+                </button>
+                <button onclick="app.cancelReservation('${t.id}')" class="py-2 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-semibold transition-colors">
+                  Cancel
+                </button>
+              `;
+            } else if (t.status === 'OCCUPIED') {
+              const subtotal = order ? order.getSubtotal() : 0;
+              const itemCount = order ? order.getTotalQuantity() : 0;
+              middleContent = `
+                <div class="p-2.5 rounded-xl bg-amber-50/80 border border-amber-100 text-xs space-y-1">
+                  <div class="flex justify-between">
+                    <span class="text-slate-600">Guest:</span>
+                    <span class="font-semibold text-slate-900 truncate max-w-[130px]">${order?.customerName || 'Walk-in'}</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-slate-600">Items Ordered:</span>
+                    <span class="font-semibold text-slate-900">${itemCount} items</span>
+                  </div>
+                  <div class="flex justify-between pt-1 border-t border-amber-200/60">
+                    <span class="font-semibold text-amber-900">Running Bill:</span>
+                    <span class="font-bold text-amber-800">${this.formatMoney(subtotal)}</span>
+                  </div>
+                </div>
+              `;
+              actionButtons = `
+                <button onclick="app.openTableOrder('${t.id}')" class="flex-1 py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition-colors">
+                  + Add Items
+                </button>
+                <button onclick="app.goToBillTable('${t.id}')" class="flex-1 py-2 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold transition-colors">
+                  Bill & Settle
+                </button>
+              `;
+            }
+
+            return `
+              <div class="bg-white rounded-2xl border ${cardBorder[t.status]} shadow-sm p-4 flex flex-col justify-between gap-3">
+                <div>
+                  <div class="flex items-start justify-between">
+                    <div>
+                      <div class="flex items-center gap-2">
+                        <h4 class="font-extrabold text-lg text-slate-900">${t.name}</h4>
+                        <span class="text-[11px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-medium">${t.zone}</span>
+                      </div>
+                      <p class="text-xs text-slate-500 mt-0.5"><i class="fa-solid fa-users text-slate-400 mr-1"></i> Capacity: ${t.capacity} Seats</p>
+                    </div>
+                    <span class="text-[10px] font-bold px-2.5 py-1 rounded-full ${badgeStyles[t.status]}">${t.status}</span>
+                  </div>
+                  <div class="mt-3">${middleContent}</div>
+                </div>
+
+                <div class="flex items-center gap-2 pt-2 border-t border-slate-100">
+                  ${actionButtons}
+                </div>
+              </div>
+            `;
+          })
+          .join('');
+      }
+
+      openAddTableModal() {
+        this.openModal('add-table-modal');
+      }
+
+      openBookingModal(tableId) {
+        const table = this.service.tables.find(t => t.id === tableId);
+        if (!table) return;
+        document.getElementById('booking-table-id').value = table.id;
+        document.getElementById('booking-modal-title').textContent = `Reserve Table ${table.name} (${table.capacity} Seats)`;
+        document.getElementById('booking-guests').value = Math.min(2, table.capacity);
+        this.openModal('booking-modal');
+      }
+
+      seatGuestsNow(tableId) {
+        const table = this.service.tables.find(t => t.id === tableId);
+        if (!table) return;
+        table.status = 'OCCUPIED';
+        table.reservation = null;
+        this.service.saveState();
+        this.switchTab('pos');
+        this.loadTableIntoPOS(tableId);
+        this.showToast(`Guests seated at Table ${table.name}`, 'info');
+      }
+
+      seatReservedTable(tableId) {
+        const table = this.service.tables.find(t => t.id === tableId);
+        if (!table) return;
+        const guestName = table.reservation?.customerName || 'Reserved Guest';
+        table.status = 'OCCUPIED';
+        table.reservation = null;
+        this.service.saveState();
+        this.switchTab('pos');
+        this.loadTableIntoPOS(tableId, guestName);
+        this.showToast(`Seated ${guestName} at Table ${table.name}`);
+      }
+
+      cancelReservation(tableId) {
+        const table = this.service.tables.find(t => t.id === tableId);
+        if (!table) return;
+        table.status = 'AVAILABLE';
+        table.reservation = null;
+        this.service.saveState();
+        this.renderAll();
+        this.showToast(`Reservation for Table ${table.name} cancelled`, 'info');
+      }
+
+      openTableOrder(tableId) {
+        this.switchTab('pos');
+        this.loadTableIntoPOS(tableId);
+      }
+
+      goToBillTable(tableId) {
+        const table = this.service.tables.find(t => t.id === tableId);
+        if (!table || !table.activeOrderId) {
+          this.showToast('No items ordered on this table yet!', 'error');
+          return;
+        }
+        this.switchTab('billing');
+        document.getElementById('bill-order-select').value = table.activeOrderId;
+        this.renderBillingScreen();
+      }
+
+      // =========================================================
+      // 3. ORDER TAKING & POS CART
+      // =========================================================
+      syncDefaultDraftOrder() {
+        const firstOccupied = this.service.tables.find(t => t.status === 'OCCUPIED');
+        const targetId = firstOccupied ? firstOccupied.id : this.service.tables[0]?.id || 'TAKEAWAY';
+        this.loadTableIntoPOS(targetId);
+      }
+
+      renderPOSTableDropdown() {
+        const select = document.getElementById('pos-table-select');
+        const currentVal = this.draftOrder.tableId;
+
+        const tableOpts = this.service.tables
+          .map(t => `<option value="${t.id}">${t.name} (${t.zone}) — ${t.status}</option>`)
+          .join('');
+
+        select.innerHTML = `
+          <optgroup label="Dining Tables">
+            ${tableOpts}
+          </optgroup>
+          <optgroup label="Direct Counter">
+            <option value="TAKEAWAY">Takeaway / Parcel Counter</option>
+          </optgroup>
+        `;
+        select.value = currentVal;
+      }
+
+      loadTableIntoPOS(tableId, presetGuestName = '') {
+        const select = document.getElementById('pos-table-select');
+        if (select) select.value = tableId;
+
+        if (tableId === 'TAKEAWAY') {
+          this.draftOrder = {
+            id: null,
+            tableId: 'TAKEAWAY',
+            customerName: presetGuestName || '',
+            items: [],
+          };
+        } else {
+          const table = this.service.tables.find(t => t.id === tableId);
+          const existingOrder = table?.activeOrderId
+            ? this.service.orders.find(o => o.id === table.activeOrderId && o.status === 'OPEN')
+            : null;
+
+          if (existingOrder) {
+            this.draftOrder = {
+              id: existingOrder.id,
+              tableId: table.id,
+              customerName: existingOrder.customerName,
+              items: JSON.parse(JSON.stringify(existingOrder.items)),
+            };
+          } else {
+            this.draftOrder = {
+              id: null,
+              tableId: table ? table.id : 'TAKEAWAY',
+              customerName: presetGuestName || table?.reservation?.customerName || '',
+              items: [],
+            };
+          }
+        }
+
+        document.getElementById('pos-customer-name').value = this.draftOrder.customerName;
+        document.getElementById('pos-order-id-badge').textContent = this.draftOrder.id || 'NEW TICKET';
+        this.renderPOSCart();
+      }
+
+      renderPOSMenu() {
+        // Render Category Pills
+        const categories = ['ALL', 'Starters', 'Main Course', 'Breads & Rice', 'Beverages', 'Desserts'];
+        const pillBox = document.getElementById('pos-category-pills');
+        pillBox.innerHTML = categories
+          .map(cat => {
+            const active = this.posCategory === cat;
+            return `
+              <button onclick="app.setPOSCategory('${cat}')" class="px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors ${
+                active ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }">
+                ${cat === 'ALL' ? 'All Categories' : cat}
+              </button>
+            `;
+          })
+          .join('');
+
+        // Filter Menu Items
+        const query = document.getElementById('pos-search-input').value.trim().toLowerCase();
+        const diet = document.getElementById('pos-diet-filter').value;
+
+        const items = this.service.menu.filter(m => {
+          if (!m.available) return false;
+          if (this.posCategory !== 'ALL' && m.category !== this.posCategory) return false;
+          if (diet === 'VEG' && !m.isVeg) return false;
+          if (diet === 'NON_VEG' && m.isVeg) return false;
+          if (query && !m.name.toLowerCase().includes(query) && !m.id.toLowerCase().includes(query)) return false;
+          return true;
+        });
+
+        const grid = document.getElementById('pos-menu-grid');
+        if (!items.length) {
+          grid.innerHTML = `<div class="col-span-full bg-white p-8 rounded-2xl border border-slate-200 text-center text-sm text-slate-400">No available dishes match your search.</div>`;
+          return;
+        }
+
+        grid.innerHTML = items
+          .map(
+            item => `
+            <div class="bg-white p-3.5 rounded-2xl border border-slate-200/80 hover:border-amber-400 shadow-xs transition-all flex items-center justify-between gap-3">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="w-3.5 h-3.5 rounded-xs border flex items-center justify-center shrink-0 ${
+                    item.isVeg ? 'border-emerald-600' : 'border-rose-600'
+                  }">
+                    <span class="w-1.5 h-1.5 rounded-full ${item.isVeg ? 'bg-emerald-600' : 'bg-rose-600'}"></span>
+                  </span>
+                  <span class="text-[10px] font-mono text-slate-400">${item.id}</span>
+                  <span class="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 font-medium">${item.category}</span>
+                </div>
+                <h4 class="font-bold text-slate-900 text-sm mt-1 truncate">${item.name}</h4>
+                <p class="font-extrabold text-amber-600 text-sm mt-0.5">${this.formatMoney(item.price)}</p>
+              </div>
+              <button onclick="app.addItemToDraft('${item.id}')" class="w-10 h-10 rounded-xl bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 flex items-center justify-center font-bold shadow-xs shrink-0 transition-all">
+                <i class="fa-solid fa-plus"></i>
+              </button>
+            </div>
+          `
+          )
+          .join('');
+      }
+
+      setPOSCategory(cat) {
+        this.posCategory = cat;
+        this.renderPOSMenu();
+      }
+
+      addItemToDraft(menuItemId) {
+        const dish = this.service.menu.find(m => m.id === menuItemId);
+        if (!dish) return;
+
+        const existing = this.draftOrder.items.find(i => i.menuItemId === menuItemId);
+        if (existing) {
+          existing.quantity += 1;
+        } else {
+          this.draftOrder.items.push({
+            menuItemId: dish.id,
+            name: dish.name,
+            price: dish.price,
+            isVeg: dish.isVeg,
+            quantity: 1,
+            note: '',
+          });
+        }
+        this.renderPOSCart();
+      }
+
+      updateDraftQty(index, delta) {
+        const item = this.draftOrder.items[index];
+        if (!item) return;
+        item.quantity += delta;
+        if (item.quantity <= 0) {
+          this.draftOrder.items.splice(index, 1);
+        }
+        this.renderPOSCart();
+      }
+
+      updateDraftNote(index, note) {
+        if (this.draftOrder.items[index]) {
+          this.draftOrder.items[index].note = note;
+        }
+      }
+
+      renderPOSCart() {
+        const container = document.getElementById('pos-cart-items');
+        if (!this.draftOrder.items.length) {
+          container.innerHTML = `
+            <div class="py-10 text-center space-y-2">
+              <div class="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto text-lg">
+                <i class="fa-solid fa-basket-shopping"></i>
+              </div>
+              <p class="text-sm font-semibold text-slate-600">Cart is empty</p>
+              <p class="text-xs text-slate-400">Tap + on any menu dish to add items to this order</p>
+            </div>
+          `;
+        } else {
+          container.innerHTML = this.draftOrder.items
+            .map(
+              (item, idx) => `
+              <div class="pt-2.5 first:pt-0 space-y-1.5">
+                <div class="flex items-center justify-between gap-2">
+                  <div class="min-w-0 flex-1">
+                    <p class="text-xs font-bold text-slate-900 truncate">${item.name}</p>
+                    <p class="text-[11px] text-slate-500">${this.formatMoney(item.price)} × ${item.quantity} = <span class="font-semibold text-slate-800">${this.formatMoney(item.price * item.quantity)}</span></p>
+                  </div>
+                  <div class="flex items-center gap-1.5 shrink-0">
+                    <button onclick="app.updateDraftQty(${idx}, -1)" class="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center justify-center">
+                      <i class="fa-solid fa-minus"></i>
+                    </button>
+                    <span class="w-6 text-center text-xs font-bold text-slate-900">${item.quantity}</span>
+                    <button onclick="app.updateDraftQty(${idx}, 1)" class="w-7 h-7 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 text-xs font-bold flex items-center justify-center">
+                      <i class="fa-solid fa-plus"></i>
+                    </button>
+                  </div>
+                </div>
+                <input type="text" value="${item.note || ''}" onchange="app.updateDraftNote(${idx}, this.value)" placeholder="Add kitchen note (e.g., less spicy)..." class="w-full px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200/80 text-[11px] text-slate-600 focus:outline-none focus:border-amber-400" />
+              </div>
+            `
+            )
+            .join('');
+        }
+
+        const totalQty = this.draftOrder.items.reduce((s, i) => s + i.quantity, 0);
+        const subtotal = this.draftOrder.items.reduce((s, i) => s + i.price * i.quantity, 0);
+        const estTotal = subtotal * 1.05;
+
+        document.getElementById('pos-cart-count').textContent = `${totalQty} items`;
+        document.getElementById('pos-cart-subtotal').textContent = this.formatMoney(subtotal);
+        document.getElementById('pos-cart-total').textContent = this.formatMoney(estTotal);
+      }
+
+      savePOSOrder(silent = false) {
+        if (!this.draftOrder.items.length) {
+          this.showToast('Please add at least one item before saving!', 'error');
+          return null;
+        }
+
+        const tableId = this.draftOrder.tableId;
+        const customerName = document.getElementById('pos-customer-name').value.trim() || 'Walk-in Guest';
+        let tableName = 'Takeaway Counter';
+        let tableObj = null;
+
+        if (tableId !== 'TAKEAWAY') {
+          tableObj = this.service.tables.find(t => t.id === tableId);
+          if (tableObj) {
+            tableName = `${tableObj.name} (${tableObj.zone})`;
+          }
+        }
+
+        let orderObj = this.draftOrder.id
+          ? this.service.orders.find(o => o.id === this.draftOrder.id)
+          : null;
+
+        if (orderObj) {
+          orderObj.customerName = customerName;
+          orderObj.items = JSON.parse(JSON.stringify(this.draftOrder.items));
+        } else {
+          const newId = 'ORD-' + Math.floor(1000 + Math.random() * 9000);
+          orderObj = new Order(
+            newId,
+            tableId,
+            tableName,
+            customerName,
+            JSON.parse(JSON.stringify(this.draftOrder.items))
+          );
+          this.service.orders.push(orderObj);
+          this.draftOrder.id = newId;
+        }
+
+        if (tableObj) {
+          tableObj.status = 'OCCUPIED';
+          tableObj.reservation = null;
+          tableObj.activeOrderId = orderObj.id;
+        }
+
+        this.service.saveState();
+        document.getElementById('pos-order-id-badge').textContent = orderObj.id;
+        this.updateBadges();
+        this.renderDashboard();
+        this.renderTables();
+        this.renderPOSTableDropdown();
+
+        if (!silent) {
+          this.showToast(`Order ${orderObj.id} sent to kitchen for ${tableName}!`);
+        }
+        return orderObj;
+      }
+
+      // =========================================================
+      // 4. BILLING, DISCOUNTS & SETTLEMENT
+      // =========================================================
+      renderBillingScreen() {
+        const select = document.getElementById('bill-order-select');
+        const openOrders = this.service.orders.filter(o => o.status === 'OPEN' && o.items.length > 0);
+        const prevSelected = select.value;
+
+        if (!openOrders.length) {
+          select.innerHTML = `<option value="">No active orders pending billing</option>`;
+          document.getElementById('bill-items-container').innerHTML = `
+            <div class="p-8 text-center text-sm text-slate-400">
+              No active table orders ready for checkout. Create an order in the POS tab first.
+            </div>
+          `;
+          document.getElementById('complete-payment-btn').disabled = true;
+          this.resetBillSummaryNumbers();
+          return;
+        }
+
+        select.innerHTML = openOrders
+          .map(o => `<option value="${o.id}">${o.tableName} — ${o.customerName} (${o.id})</option>`)
+          .join('');
+
+        if (prevSelected && openOrders.some(o => o.id === prevSelected)) {
+          select.value = prevSelected;
+        }
+
+        document.getElementById('complete-payment-btn').disabled = false;
+        this.recalculateBill();
+      }
+
+      resetBillSummaryNumbers() {
+        document.getElementById('bill-preview-id').textContent = 'INV-NONE';
+        document.getElementById('bill-subtotal').textContent = this.formatMoney(0);
+        document.getElementById('bill-discount-amount').textContent = `-${this.formatMoney(0)}`;
+        document.getElementById('bill-cgst-amount').textContent = this.formatMoney(0);
+        document.getElementById('bill-sgst-amount').textContent = this.formatMoney(0);
+        document.getElementById('bill-service-amount').textContent = this.formatMoney(0);
+        document.getElementById('bill-roundoff').textContent = this.formatMoney(0);
+        document.getElementById('bill-grand-total').textContent = this.formatMoney(0);
+      }
+
+      recalculateBill() {
+        const orderId = document.getElementById('bill-order-select').value;
+        const order = this.service.orders.find(o => o.id === orderId);
+        if (!order) return;
+
+        // Render Itemized Table
+        const itemsBox = document.getElementById('bill-items-container');
+        itemsBox.innerHTML = `
+          <table class="w-full text-left border-collapse text-sm">
+            <thead>
+              <tr class="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase text-slate-500">
+                <th class="py-2.5 px-3.5">Item</th>
+                <th class="py-2.5 px-3 text-center">Qty</th>
+                <th class="py-2.5 px-3 text-right">Rate</th>
+                <th class="py-2.5 px-3.5 text-right">Amount</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              ${order.items
+                .map(
+                  i => `
+                <tr>
+                  <td class="py-2.5 px-3.5 font-medium text-slate-800">
+                    ${i.name}
+                    ${i.note ? `<span class="block text-[11px] text-slate-400">Note: ${i.note}</span>` : ''}
+                  </td>
+                  <td class="py-2.5 px-3 text-center font-semibold">${i.quantity}</td>
+                  <td class="py-2.5 px-3 text-right text-slate-500">${this.formatMoney(i.price)}</td>
+                  <td class="py-2.5 px-3.5 text-right font-semibold text-slate-900">${this.formatMoney(i.price * i.quantity)}</td>
+                </tr>
+              `
+                )
+                .join('')}
+            </tbody>
+          </table>
+        `;
+
+        const subtotal = order.getSubtotal();
+        const policyCode = document.getElementById('bill-discount-policy').value;
+        const customVal = document.getElementById('bill-custom-discount-val').value;
+        const discount = DiscountPolicy.calculate(policyCode, subtotal, customVal);
+
+        const taxableAmount = Math.max(0, subtotal - discount.amount);
+        const taxRate = Number(document.getElementById('bill-tax-rate').value);
+        const halfTaxRate = taxRate / 2;
+        const cgst = taxableAmount * (halfTaxRate / 100);
+        const sgst = taxableAmount * (halfTaxRate / 100);
+
+        const includeService = document.getElementById('bill-service-charge').checked;
+        const serviceCharge = includeService ? taxableAmount * 0.05 : 0;
+
+        const exactTotal = taxableAmount + cgst + sgst + serviceCharge;
+        const grandTotal = Math.round(exactTotal);
+        const roundOff = grandTotal - exactTotal;
+
+        this.currentComputedBill = {
+          order,
+          subtotal,
+          discountLabel: discount.label,
+          discountAmount: discount.amount,
+          taxRate,
+          cgst,
+          sgst,
+          serviceCharge,
+          roundOff,
+          grandTotal,
+        };
+
+        document.getElementById('bill-preview-id').textContent = `INV-2026-${String(this.service.bills.length + 83).padStart(3, '0')}`;
+        document.getElementById('bill-subtotal').textContent = this.formatMoney(subtotal);
+        document.getElementById('bill-discount-name').textContent = discount.label;
+        document.getElementById('bill-discount-amount').textContent = `-${this.formatMoney(discount.amount)}`;
+        document.getElementById('bill-cgst-label').textContent = `CGST (${halfTaxRate}%)`;
+        document.getElementById('bill-sgst-label').textContent = `SGST (${halfTaxRate}%)`;
+        document.getElementById('bill-cgst-amount').textContent = this.formatMoney(cgst);
+        document.getElementById('bill-sgst-amount').textContent = this.formatMoney(sgst);
+
+        const serviceRow = document.getElementById('bill-service-row');
+        if (includeService) {
+          serviceRow.classList.remove('hidden');
+          document.getElementById('bill-service-amount').textContent = this.formatMoney(serviceCharge);
+        } else {
+          serviceRow.classList.add('hidden');
+        }
+
+        document.getElementById('bill-roundoff').textContent = `${roundOff >= 0 ? '+' : ''}${this.formatMoney(roundOff)}`;
+        document.getElementById('bill-grand-total').textContent = this.formatMoney(grandTotal);
+
+        this.updateCashChange();
+      }
+
+      updateCashChange() {
+        if (!this.currentComputedBill) return;
+        const tendered = Number(document.getElementById('bill-cash-tendered').value || 0);
+        const due = Math.max(0, tendered - this.currentComputedBill.grandTotal);
+        document.getElementById('bill-change-due').textContent = this.formatMoney(due);
+      }
+
+      settleCurrentBill() {
+        if (!this.currentComputedBill) return;
+        const calc = this.currentComputedBill;
+        const order = calc.order;
+
+        const invoiceId = `INV-2026-${String(this.service.bills.length + 83).padStart(3, '0')}`;
+        const newBill = new Bill({
+          id: invoiceId,
+          orderId: order.id,
+          tableId: order.tableId,
+          tableName: order.tableName,
+          customerName: order.customerName,
+          items: JSON.parse(JSON.stringify(order.items)),
+          subtotal: calc.subtotal,
+          discountLabel: calc.discountLabel,
+          discountAmount: calc.discountAmount,
+          taxRate: calc.taxRate,
+          cgst: calc.cgst,
+          sgst: calc.sgst,
+          serviceCharge: calc.serviceCharge,
+          roundOff: calc.roundOff,
+          grandTotal: calc.grandTotal,
+          paymentMethod: this.selectedPaymentMethod,
+          settledAt: new Date().toISOString(),
+        });
+
+        // Mark order billed & release table
+        order.status = 'BILLED';
+        if (order.tableId !== 'TAKEAWAY') {
+          const table = this.service.tables.find(t => t.id === order.tableId);
+          if (table) {
+            table.status = 'AVAILABLE';
+            table.activeOrderId = null;
+            table.reservation = null;
+          }
+        }
+
+        this.service.bills.push(newBill);
+        this.service.saveState();
+
+        // Reset draft POS if it was pointing to this order
+        if (this.draftOrder.id === order.id) {
+          this.syncDefaultDraftOrder();
+        }
+
+        document.getElementById('bill-cash-tendered').value = '';
+        this.renderAll();
+        this.viewReceipt(newBill.id);
+        this.showToast(`Payment settled! Invoice ${newBill.id} generated.`);
+      }
+
+      viewReceipt(billId) {
+        const bill = this.service.bills.find(b => b.id === billId);
+        if (!bill) return;
+
+        const dateStr = new Date(bill.settledAt).toLocaleString('en-IN', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+
+        document.getElementById('receipt-meta').innerHTML = `
+          <div><span class="text-slate-400">Invoice:</span> <strong>${bill.id}</strong></div>
+          <div class="text-right"><span class="text-slate-400">Order:</span> <strong>${bill.orderId}</strong></div>
+          <div><span class="text-slate-400">Table:</span> <strong>${bill.tableName}</strong></div>
+          <div class="text-right"><span class="text-slate-400">Pay Mode:</span> <strong>${bill.paymentMethod}</strong></div>
+          <div class="col-span-2"><span class="text-slate-400">Guest:</span> <strong>${bill.customerName}</strong></div>
+          <div class="col-span-2"><span class="text-slate-400">Date:</span> <span>${dateStr}</span></div>
+        `;
+
+        document.getElementById('receipt-items-tbody').innerHTML = bill.items
+          .map(
+            i => `
+            <tr>
+              <td class="py-1.5 pr-2 font-medium text-slate-800">${i.name}</td>
+              <td class="py-1.5 text-center">${i.quantity}</td>
+              <td class="py-1.5 text-right">${this.formatMoney(i.price)}</td>
+              <td class="py-1.5 text-right font-semibold">${this.formatMoney(i.price * i.quantity)}</td>
+            </tr>
+          `
+          )
+          .join('');
+
+        const halfTax = bill.taxRate / 2;
+        document.getElementById('receipt-totals').innerHTML = `
+          <div class="flex justify-between"><span>Subtotal</span><span>${this.formatMoney(bill.subtotal)}</span></div>
+          ${
+            bill.discountAmount > 0
+              ? `<div class="flex justify-between text-emerald-700"><span>${bill.discountLabel}</span><span>-${this.formatMoney(bill.discountAmount)}</span></div>`
+              : ''
+          }
+          <div class="flex justify-between"><span>CGST (${halfTax}%)</span><span>${this.formatMoney(bill.cgst)}</span></div>
+          <div class="flex justify-between"><span>SGST (${halfTax}%)</span><span>${this.formatMoney(bill.sgst)}</span></div>
+          ${
+            bill.serviceCharge > 0
+              ? `<div class="flex justify-between"><span>Service Charge (5%)</span><span>${this.formatMoney(bill.serviceCharge)}</span></div>`
+              : ''
+          }
+          <div class="flex justify-between text-slate-400"><span>Round Off</span><span>${this.formatMoney(bill.roundOff)}</span></div>
+          <div class="flex justify-between font-bold text-sm text-slate-950 pt-1.5 border-t border-slate-300">
+            <span>GRAND TOTAL</span>
+            <span>${this.formatMoney(bill.grandTotal)}</span>
+          </div>
+        `;
+
+        this.openModal('receipt-modal');
+      }
+
+      // =========================================================
+      // 5. MENU MANAGEMENT
+      // =========================================================
+      renderMenuManagement() {
+        const query = document.getElementById('menu-manage-search').value.trim().toLowerCase();
+        const cat = document.getElementById('menu-manage-category').value;
+
+        const filtered = this.service.menu.filter(m => {
+          if (cat !== 'ALL' && m.category !== cat) return false;
+          if (query && !m.name.toLowerCase().includes(query) && !m.id.toLowerCase().includes(query)) return false;
+          return true;
+        });
+
+        const tbody = document.getElementById('menu-manage-tbody');
+        if (!filtered.length) {
+          tbody.innerHTML = `<tr><td colspan="7" class="py-8 text-center text-slate-400">No dishes found.</td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = filtered
+          .map(
+            m => `
+            <tr class="hover:bg-slate-50/80 transition-colors">
+              <td class="py-3 px-4 font-mono text-xs text-slate-500">${m.id}</td>
+              <td class="py-3 px-4 font-semibold text-slate-900">${m.name}</td>
+              <td class="py-3 px-4"><span class="text-xs px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-medium">${m.category}</span></td>
+              <td class="py-3 px-4">
+                <span class="inline-flex items-center gap-1.5 text-xs font-semibold ${m.isVeg ? 'text-emerald-700' : 'text-rose-700'}">
+                  <span class="w-2 h-2 rounded-full ${m.isVeg ? 'bg-emerald-600' : 'bg-rose-600'}"></span>
+                  ${m.isVeg ? 'Veg' : 'Non-Veg'}
+                </span>
+              </td>
+              <td class="py-3 px-4 font-bold text-slate-900">${this.formatMoney(m.price)}</td>
+              <td class="py-3 px-4">
+                <button onclick="app.toggleDishAvailability('${m.id}')" class="text-xs font-semibold px-2.5 py-1 rounded-full transition-colors ${
+                  m.available ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200' : 'bg-rose-100 text-rose-700 hover:bg-rose-200'
+                }">
+                  ${m.available ? 'In Stock' : 'Out of Stock'}
+                </button>
+              </td>
+              <td class="py-3 px-4 text-right space-x-1">
+                <button onclick="app.openMenuModal('${m.id}')" class="p-2 rounded-lg text-slate-500 hover:text-amber-600 hover:bg-amber-50" title="Edit">
+                  <i class="fa-solid fa-pen-to-square"></i>
+                </button>
+                <button onclick="app.deleteMenuItem('${m.id}')" class="p-2 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50" title="Delete">
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+              </td>
+            </tr>
+          `
+          )
+          .join('');
+      }
+
+      openMenuModal(menuId = null) {
+        const form = document.getElementById('menu-item-form');
+        form.reset();
+        document.getElementById('edit-menu-id').value = menuId || '';
+
+        if (menuId) {
+          const item = this.service.menu.find(m => m.id === menuId);
+          if (!item) return;
+          document.getElementById('menu-modal-title').textContent = `Edit Dish (${item.id})`;
+          document.getElementById('menu-item-name').value = item.name;
+          document.getElementById('menu-item-category').value = item.category;
+          document.getElementById('menu-item-price').value = item.price;
+          document.getElementById('menu-item-veg').value = String(item.isVeg);
+          document.getElementById('menu-item-available').value = String(item.available);
+        } else {
+          document.getElementById('menu-modal-title').textContent = 'Add New Menu Dish';
+        }
+
+        this.openModal('menu-item-modal');
+      }
+
+      saveMenuItemForm() {
+        const editId = document.getElementById('edit-menu-id').value;
+        const name = document.getElementById('menu-item-name').value.trim();
+        const category = document.getElementById('menu-item-category').value;
+        const price = Number(document.getElementById('menu-item-price').value);
+        const isVeg = document.getElementById('menu-item-veg').value === 'true';
+        const available = document.getElementById('menu-item-available').value === 'true';
+
+        if (editId) {
+          const existing = this.service.menu.find(m => m.id === editId);
+          if (existing) {
+            existing.name = name;
+            existing.category = category;
+            existing.price = price;
+            existing.isVeg = isVeg;
+            existing.available = available;
+          }
+          this.showToast(`Updated "${name}"`);
+        } else {
+          const newCode = 'M' + (100 + this.service.menu.length + Math.floor(Math.random() * 899));
+          this.service.menu.push(new MenuItem(newCode, name, category, price, isVeg, available));
+          this.showToast(`Added "${name}" to menu`);
+        }
+
+        this.service.saveState();
+        this.closeModal('menu-item-modal');
+        this.renderMenuManagement();
+        this.renderPOSMenu();
+      }
+
+      toggleDishAvailability(menuId) {
+        const dish = this.service.menu.find(m => m.id === menuId);
+        if (!dish) return;
+        dish.available = !dish.available;
+        this.service.saveState();
+        this.renderMenuManagement();
+        this.renderPOSMenu();
+        this.showToast(`${dish.name} marked as ${dish.available ? 'In Stock' : 'Out of Stock'}`, 'info');
+      }
+
+      deleteMenuItem(menuId) {
+        const dish = this.service.menu.find(m => m.id === menuId);
+        if (!dish) return;
+        this.confirmAction('Delete Menu Item?', `Remove "${dish.name}" permanently from the restaurant menu?`, () => {
+          this.service.menu = this.service.menu.filter(m => m.id !== menuId);
+          this.service.saveState();
+          this.renderMenuManagement();
+          this.renderPOSMenu();
+          this.showToast(`Deleted "${dish.name}"`);
+        });
+      }
+
+      // =========================================================
+      // 6. BILLING HISTORY
+      // =========================================================
+      renderHistory() {
+        const query = document.getElementById('history-search').value.trim().toLowerCase();
+        const payFilter = document.getElementById('history-payment-filter').value;
+
+        const filtered = [...this.service.bills].reverse().filter(b => {
+          if (payFilter !== 'ALL' && b.paymentMethod !== payFilter) return false;
+          if (
+            query &&
+            !b.id.toLowerCase().includes(query) &&
+            !b.customerName.toLowerCase().includes(query) &&
+            !b.tableName.toLowerCase().includes(query)
+          ) {
+            return false;
+          }
+          return true;
+        });
+
+        const tbody = document.getElementById('history-tbody');
+        if (!filtered.length) {
+          tbody.innerHTML = `<tr><td colspan="8" class="py-10 text-center text-slate-400">No invoices match your search criteria.</td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = filtered
+          .map(b => {
+            const dt = new Date(b.settledAt).toLocaleString('en-IN', {
+              day: '2-digit',
+              month: 'short',
+              hour: '2-digit',
+              minute: '2-digit',
+            });
+            return `
+              <tr class="hover:bg-slate-50/80 transition-colors">
+                <td class="py-3.5 px-4 font-mono font-bold text-xs text-slate-900">${b.id}</td>
+                <td class="py-3.5 px-4 text-xs text-slate-500">${dt}</td>
+                <td class="py-3.5 px-4 font-medium text-slate-800">${b.tableName}</td>
+                <td class="py-3.5 px-4 text-slate-700">${b.customerName}</td>
+                <td class="py-3.5 px-4">
+                  <span class="text-[11px] font-bold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700">${b.paymentMethod}</span>
+                </td>
+                <td class="py-3.5 px-4 text-xs text-emerald-600 font-medium">
+                  ${b.discountAmount > 0 ? `-${this.formatMoney(b.discountAmount)}` : '—'}
+                </td>
+                <td class="py-3.5 px-4 font-extrabold text-slate-900">${this.formatMoney(b.grandTotal)}</td>
+                <td class="py-3.5 px-4 text-right">
+                  <button onclick="app.viewReceipt('${b.id}')" class="px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-semibold transition-colors">
+                    <i class="fa-solid fa-receipt mr-1"></i> View Receipt
+                  </button>
+                </td>
+              </tr>
+            `;
+          })
+          .join('');
+      }
+    }
+
+    // Boot application
+    let app;
+    window.addEventListener('DOMContentLoaded', () => {
+      app = new POSApp();
+    });
+  </script>
+</body>
+</html>
