@@ -1,30 +1,29 @@
-# Restaurant Billing and Table Management System
+# DineFlow POS — Restaurant Billing & Table Management System
 
-A working Java + HTML/CSS/JavaScript project for your evaluation. It uses Core Java's built-in `HttpServer` and in-memory collections (no MySQL/JDBC yet), as requested for Evaluation 1. Data resets when the server restarts. JDBC/MySQL can be added for Evaluation 2.
-
-## Requirements
-- JDK 17 or newer (JDK 21 recommended)
-- VS Code Java Extension Pack
-
-## Run
-1. Extract this folder.
-2. Open the extracted `Restaurant_Billing_Table_Management` folder in VS Code.
-3. Open `src/Main.java`.
-4. Run `Main.java` (Run button above `main`).
-5. Wait for `Restaurant system running at http://localhost:8080`.
-6. Open **http://localhost:8080** in Chrome.
-
-Do NOT use Live Server for this project. Java serves the frontend and API together.
-If port 8080 is already occupied, stop the old Java run with Ctrl+C and run again.
+A restaurant billing, table reservation, menu management, and point-of-sale (POS) application built around a Java domain model (`Table`, `MenuItem`, `Order`, `Bill`, `DiscountPolicy`, and `RestaurantService`) paired with a browser-based interface (`public/`).
 
 ## Features
-- Table status and table allocation
-- Menu listing and adding menu items
-- Create an order for an available table
-- Add item quantities and remove order items
-- Subtotal, 5% tax, discount, final bill
-- Checkout and mark payment method
-- Orders and bills shown on dashboard
-- Java OOP classes, collections, discount polymorphism, and an edit-history stack
 
-All data is stored in memory for this evaluation; restarting Java resets demo data.
+* **Dashboard Overview**: Track live revenue, active orders, table occupancy, and reservations alongside a mini floor plan and recent settled bills.
+* **Tables & Reservations**: Manage dining tables (`T1`–`T10`), add new tables, schedule reservations with guest details, times, and notes, seat guests, and monitor active table totals.
+* **Order Taking & POS Cart**: Filter dishes by category or dietary preference (Veg/Non-Veg), assign orders to a dining table or Takeaway counter, add kitchen notes, and send Kitchen Order Tickets (KOTs) for multi-round dining.
+* **Billing, Discounts & Settlement**: Apply loyalty tiers or custom percentage/flat discounts, configure applicable tax slabs and service charges, calculate cash change due, and generate itemized invoices.
+* **Menu Management & Billing History**: Add, edit, toggle stock availability, or delete dishes, and search or reprint past bills.
+
+## Project Structure
+
+```text
+Restaurant_billing/
+├── README.md
+├── public/
+│   ├── index.html
+│   ├── app.js
+│   └── style.css
+└── src/
+    ├── Bill.java
+    ├── DiscountPolicy.java
+    ├── Main.java
+    ├── MenuItem.java
+    ├── Order.java
+    ├── RestaurantService.java
+    └── Table.java
